@@ -13,14 +13,17 @@ from .util import cache, stdout_encode, debug
 
 def get_version():
     ''' Return Version Number'''
-    return "1.4.2"
+    return "1.4.3"
 
-API_URL = 'http://en.wikipedia.org/w/api.php'
-RATE_LIMIT = False
-RATE_LIMIT_MIN_WAIT = None
-RATE_LIMIT_LAST_CALL = None
-USER_AGENT = 'python-wikipedia/{0} (https://github.com/barrust/Wikipedia/) BOT'.format(get_version())
-SESSION = None
+WIKIPEDIA_GLOBALS = {
+    'API_URL': 'http://en.wikipedia.org/w/api.php',
+    'RATE_LIMIT': False,
+    'RATE_LIMIT_MIN_WAIT': None,
+    'RATE_LIMIT_LAST_CALL': None,
+    'USER_AGENT': 'python-wikipedia/{0} (https://github.com/barrust/Wikipedia/) BOT'.format(get_version()),
+    'SESSION': None
+}
+
 
 
 def set_lang(prefix):
@@ -32,16 +35,14 @@ def set_lang(prefix):
 
     .. note:: Make sure you search for page titles in the language that you have set.
     '''
-    global API_URL
-    API_URL = 'http://' + prefix.lower() + '.wikipedia.org/w/api.php'
+    global WIKIPEDIA_GLOBALS
+    WIKIPEDIA_GLOBALS['API_URL'] = 'http://' + prefix.lower() + '.wikipedia.org/w/api.php'
 
     clear_cache()
 
 def clear_cache():
-    '''
-    Clear the cached results as necessary
-    '''
-    for cached_func in (search, suggest, summary, categorymembers, geosearch):
+    ''' Clear the cached results as necessary '''
+    for cached_func in (search, suggest, summary, categorymembers, geosearch, opensearch):
         cached_func.clear_cache()
 
 def set_user_agent(user_agent_string):
@@ -52,22 +53,24 @@ def set_user_agent(user_agent_string):
 
     * user_agent_string - (string) a string specifying the User-Agent header
     '''
-    global USER_AGENT
+    global WIKIPEDIA_GLOBALS
 
-    USER_AGENT = user_agent_string
+    WIKIPEDIA_GLOBALS['USER_AGENT'] = user_agent_string
     reset_session()
 
+def get_user_agent():
+    ''' See User Agent string '''
+    global WIKIPEDIA_GLOBALS
+    return WIKIPEDIA_GLOBALS['USER_AGENT']
+
 def reset_session():
-    '''
-    Reset HTTP session
-    '''
-    global SESSION
-    global USER_AGENT
+    ''' Reset HTTP session '''
+    global WIKIPEDIA_GLOBALS
     headers = {
-        'User-Agent': USER_AGENT
+        'User-Agent': WIKIPEDIA_GLOBALS['USER_AGENT']
     }
-    SESSION = requests.Session()
-    SESSION.headers.update(headers)
+    WIKIPEDIA_GLOBALS['SESSION'] = requests.Session()
+    WIKIPEDIA_GLOBALS['SESSION'].headers.update(headers)
 
 def set_rate_limiting(rate_limit, min_wait=timedelta(milliseconds=50)):
     '''
@@ -88,17 +91,15 @@ def set_rate_limiting(rate_limit, min_wait=timedelta(milliseconds=50)):
     * min_wait - if rate limiting is enabled, `min_wait` is a timedelta describing the minimum time to wait before requests.
                  Defaults to timedelta(milliseconds=50)
     '''
-    global RATE_LIMIT
-    global RATE_LIMIT_MIN_WAIT
-    global RATE_LIMIT_LAST_CALL
+    global WIKIPEDIA_GLOBALS
 
-    RATE_LIMIT = rate_limit
+    WIKIPEDIA_GLOBALS['RATE_LIMIT'] = rate_limit
     if not rate_limit:
-        RATE_LIMIT_MIN_WAIT = None
+        WIKIPEDIA_GLOBALS['RATE_LIMIT_MIN_WAIT'] = None
     else:
-        RATE_LIMIT_MIN_WAIT = min_wait
+        WIKIPEDIA_GLOBALS['RATE_LIMIT_MIN_WAIT'] = min_wait
 
-    RATE_LIMIT_LAST_CALL = None
+    WIKIPEDIA_GLOBALS['RATE_LIMIT_LAST_CALL'] = None
 
 
 @cache
@@ -117,7 +118,6 @@ def search(query, results=10, suggestion=False):
         'list': 'search',
         'srprop': '',
         'srlimit': results,
-        'limit': results,
         'srsearch': query
     }
     if suggestion:
@@ -174,12 +174,12 @@ def categorymembers(category, results=10, subcategories=True):
     subcats = list()
     for d in raw_results['query']['categorymembers']:
         if d['type'] == 'page':
-                pages.append(d['title'])
+            pages.append(d['title'])
         elif d['type'] == 'subcat':
-                tmp = d['title']
-                if tmp.startswith('Category:'):
-                        tmp = tmp[9:]
-                subcats.append(tmp)
+            tmp = d['title']
+            if tmp.startswith('Category:'):
+                tmp = tmp[9:]
+            subcats.append(tmp)
     if subcategories:
         return pages, subcats
     else:
@@ -195,10 +195,12 @@ def categorytree(category, depth=5):
 
     .. note:: Set depth to 0 to get the full tree
 
+    .. note:: Recommended to set rate limit to True
+
     .. warning:: Very long running! Requires many calls to categorymembers; recommend setting rate limit before running.
     '''
 
-    def __cat_tree_rec(cat, depth, tree, level):
+    def __cat_tree_rec(cat, depth, tree, level, categories, links):
         ''' recursive function to build out the tree '''
         tree[cat] = dict()
         tree[cat]['depth'] = level
@@ -206,21 +208,32 @@ def categorytree(category, depth=5):
         tree[cat]['links'] = list()
         tree[cat]['parent-categories'] = list()
 
-        cat_page = page('Category:{0}'.format(cat))
-        for p in cat_page.categories:
+        if cat not in categories:
+            while True:
+                try:
+                    categories[cat] = page('Category:{0}'.format(cat))
+                    categories[cat].categories
+                    links[cat] = categorymembers(cat, 500, True)
+                    break
+                except PageError as e:
+                    raise PageError(cat)
+                except Exception as e:
+                    time.sleep(1)
+
+        for p in categories[cat].categories:
              tree[cat]['parent-categories'].append(p)
 
-        cm = categorymembers(cat, 500, True)
-        for link in cm[0]:
+        for link in links[cat][0]:
             tree[cat]['links'].append(link)
 
         if level >= depth > 0:
-            for c in cm[1]:
+            for c in links[cat][1]:
                 tree[cat]['sub-categories'][c] = None
         else:
-            for c in cm[1]:
-                __cat_tree_rec(c, depth, tree[cat]['sub-categories'], level + 1)
+            for c in links[cat][1]:
+                __cat_tree_rec(c, depth, tree[cat]['sub-categories'], level + 1, categories, links)
         return
+    # end __cat_tree_rec
 
     # make it simple to use both a list or a single category term
     if type(category) is not list:
@@ -229,8 +242,10 @@ def categorytree(category, depth=5):
         cats = category
 
     results = dict()
+    categories = dict()
+    links = dict()
     for cat in cats:
-        __cat_tree_rec(cat, depth, results, 0)
+        __cat_tree_rec(cat, depth, results, 0, categories, links)
     return results
 
 
@@ -281,6 +296,74 @@ def geosearch(latitude, longitude, title=None, results=10, radius=1000):
 
     return list(search_results)
 
+@cache
+def opensearch(query, results=10, redirect=False):
+    '''
+    Execute a Wikipedia opensearch request, similar to search box suggestions and conforming to the OpenSearch specification.
+
+    Keyword arguments:
+
+    * results - the maxmimum number of results returned (limited to 100 total by the API)
+    * redirect - if True, return the redirect itself otherwise return the target page which may return fewer than limit results.
+
+    Returns:
+
+    * List of tuples: Title, Summary, and URL
+    '''
+    if query is None or query.strip() == '':
+        raise ValueError("Query must be specified")
+
+    query_params = {
+        'action': 'opensearch',
+        'search': query,
+        'limit': (100 if results > 100 else results),
+        'redirects': ('resolve' if redirect is True else 'return'),
+        'warningsaserror': True,
+        'namespace': ''
+    }
+
+    raw_results = _wiki_request(query_params)
+
+    if 'error' in raw_results:
+        raise WikipediaException(raw_results['error']['info'])
+
+    res = list()
+    for i in range(0, len(raw_results[1])):
+        res.append((raw_results[1][i], raw_results[2][i], raw_results[3][i],))
+
+    return res
+
+@cache
+def prefexsearch(query, results=10):
+    '''
+    Request a prefex based search exactly like the Wikipedia search box results.
+
+    Keyword arguments:
+
+    * results - the maxmimum number of results returned (limited to 100 total by the API)
+    '''
+    if query is None or query.strip() == '':
+        raise ValueError("Query must be specified")
+
+    query_params = {
+        'action': 'query',
+        'list': 'prefixsearch',
+        'pssearch': query,
+        'pslimit': (100 if results > 100 else results),
+        'psnamespace': 0,
+        'psoffset': 0 # this could be added as a parameter to allow for skipping to later in the list
+    }
+
+    raw_results = _wiki_request(query_params)
+
+    if 'error' in raw_results:
+        raise WikipediaException(raw_results['error']['info'])
+
+    res = list()
+    for d in raw_results['query']['prefixsearch']:
+        res.append(d['title'])
+
+    return res
 
 @cache
 def suggest(query):
@@ -295,8 +378,8 @@ def suggest(query):
         'list': 'search',
         'srinfo': 'suggestion',
         'srprop': '',
+        'srsearch': query
     }
-    search_params['srsearch'] = query
 
     raw_result = _wiki_request(search_params)
 
@@ -355,26 +438,8 @@ def summary(title, sentences=0, chars=0, auto_suggest=True, redirect=True):
     # use auto_suggest and redirect to get the correct article
     # also, use page's error checking to raise DisambiguationError if necessary
     page_info = page(title, auto_suggest=auto_suggest, redirect=redirect)
-    title = page_info.title
-    pageid = page_info.pageid
 
-    query_params = {
-        'prop': 'extracts',
-        'explaintext': '',
-        'titles': title
-    }
-
-    if sentences:
-        query_params['exsentences'] = sentences
-    elif chars:
-        query_params['exchars'] = chars
-    else:
-        query_params['exintro'] = ''
-
-    request = _wiki_request(query_params)
-    summary = request['query']['pages'][pageid]['extract']
-
-    return summary
+    return page_info.get_summary(sentences, chars)
 
 
 def page(title=None, pageid=None, auto_suggest=True, redirect=True, preload=False):
@@ -396,6 +461,7 @@ def page(title=None, pageid=None, auto_suggest=True, redirect=True, preload=Fals
             results, suggestion = search(title, results=1, suggestion=True)
             try:
                 title = suggestion or results[0]
+                # title = results[0] or suggestion #should these be flipped?
             except IndexError:
                 # if there is no suggestion or search results, the page doesn't exist
                 raise PageError(title)
@@ -425,7 +491,7 @@ class WikipediaPage(object):
         self.__load(redirect=redirect, preload=preload)
 
         if preload:
-            for prop in ('content', 'summary', 'images', 'references', 'links', 'sections', 'redirects', 'coordinates'):
+            for prop in ('content', 'summary', 'images', 'references', 'links', 'sections', 'redirects', 'coordinates', 'backlinks', 'categories'):
                 getattr(self, prop)
 
     def __repr__(self):
@@ -454,10 +520,7 @@ class WikipediaPage(object):
             'ppprop': 'disambiguation',
             'redirects': '',
         }
-        if not getattr(self, 'pageid', None):
-            query_params['titles'] = self.title
-        else:
-            query_params['pageids'] = self.pageid
+        query_params.update(self.__title_query_param)
 
         request = _wiki_request(query_params)
 
@@ -508,10 +571,7 @@ class WikipediaPage(object):
                 'rvparse': '',
                 'rvlimit': 1
             }
-            if hasattr(self, 'pageid'):
-                query_params['pageids'] = self.pageid
-            else:
-                query_params['titles'] = self.title
+            query_params.update(self.__title_query_param)
             request = _wiki_request(query_params)
             html = request['query']['pages'][pageid]['revisions'][0]['*']
 
@@ -602,10 +662,7 @@ class WikipediaPage(object):
                 'explaintext': '',
                 'rvprop': 'ids'
             }
-            if getattr(self, 'title', None) is not None:
-                 query_params['titles'] = self.title
-            else:
-                 query_params['pageids'] = self.pageid
+            query_params.update(self.__title_query_param)
             request = _wiki_request(query_params)
             self._content     = request['query']['pages'][self.pageid]['extract']
             self._revision_id = request['query']['pages'][self.pageid]['revisions'][0]['revid']
@@ -646,22 +703,39 @@ class WikipediaPage(object):
     def summary(self):
         '''
         Plain text summary of the page.
+
+        ** note: This is the same as calling page.get_summary()
         '''
         if not getattr(self, '_summary', False):
-            query_params = {
-                'prop': 'extracts',
-                'explaintext': '',
-                'exintro': '',
-            }
-            if getattr(self, 'title', None) is not None:
-                 query_params['titles'] = self.title
-            else:
-                 query_params['pageids'] = self.pageid
-
-            request = _wiki_request(query_params)
-            self._summary = request['query']['pages'][self.pageid]['extract']
+            self._summary = self.get_summary()
 
         return self._summary
+
+    def get_summary(self, sentences=0, chars=0):
+        '''
+        Plain text summary of the page.
+
+        Keyword arguments:
+
+        * sentences - if set, return the first `sentences` sentences (can be no greater than 10).
+        * chars - if set, return only the first `chars` characters (actual text returned may be slightly longer).
+        '''
+        query_params = {
+            'prop': 'extracts',
+            'explaintext': '',
+            'titles': self.title
+        }
+
+        if sentences:
+            query_params['exsentences'] = (10 if sentences > 10 else sentences)
+        elif chars:
+            query_params['exchars'] = (1 if chars < 1 else chars)
+        else:
+            query_params['exintro'] = ''
+
+        request = _wiki_request(query_params)
+        summary = request['query']['pages'][self.pageid]['extract']
+        return summary
 
     @property
     def images(self):
@@ -682,15 +756,9 @@ class WikipediaPage(object):
         Tuple of Decimals in the form of (lat, lon) or None
         '''
         if not getattr(self, '_coordinates', False):
-            query_params = {
-                'prop': 'coordinates',
-                'colimit': 'max',
-                'titles': self.title,
-            }
+            request = _wiki_request({'prop': 'coordinates', 'colimit': 'max', 'titles': self.title})
 
-            request = _wiki_request(query_params)
-
-            if 'query' in request and'coordinates' in  request['query']['pages'][self.pageid]:
+            if 'query' in request and 'coordinates' in request['query']['pages'][self.pageid]:
                 coordinates = request['query']['pages'][self.pageid]['coordinates']
                 self._coordinates = (Decimal(coordinates[0]['lat']), Decimal(coordinates[0]['lon']))
             else:
@@ -752,6 +820,34 @@ class WikipediaPage(object):
                 self._redirects.append(link['title'])
 
         return self._redirects
+
+    @property
+    def backlinks(self):
+        '''
+        List all pages that link to this page
+
+        .. note:: Only includes articles from namespace 0, meaning no Category, User talk, or other meta-Wikipedia pages.
+        '''
+        if not getattr(self, '_backlinks', False):
+            query_params = {
+                'action': 'query',
+                'list': 'backlinks',
+                'bltitle': self.title,
+                'bllimit': 500, # as many as possible
+                'blfilterredir': 'nonredirects',
+                'blcontinue': dict(),
+                'blnamespace': 0
+            }
+            self._backlinks = list()
+            while True: # mimic the __continued_query function
+                results = _wiki_request(query_params)
+                for link in results['query']['backlinks']:
+                    self._backlinks.append(link['title'])
+                if results.get('continue', False) is False:
+                    break
+                else:
+                    query_params['blcontinue'] = results['continue']['blcontinue']
+        return self._backlinks
 
     @property
     def sections(self):
@@ -837,27 +933,29 @@ def _wiki_request(params):
     Make a request to the Wikipedia API using the given search parameters.
     Returns a parsed dict of the JSON response.
     '''
-    global RATE_LIMIT_LAST_CALL
-    global RATE_LIMIT
-    global RATE_LIMIT_MIN_WAIT
-    global SESSION
+    global WIKIPEDIA_GLOBALS
+
+    rate_limit = WIKIPEDIA_GLOBALS['RATE_LIMIT']
+    last_call = WIKIPEDIA_GLOBALS['RATE_LIMIT_LAST_CALL']
+    wait = WIKIPEDIA_GLOBALS['RATE_LIMIT_MIN_WAIT']
+    url = WIKIPEDIA_GLOBALS['API_URL']
 
     params['format'] = 'json'
     if not 'action' in params:
         params['action'] = 'query'
 
-    if RATE_LIMIT and RATE_LIMIT_LAST_CALL and RATE_LIMIT_LAST_CALL + RATE_LIMIT_MIN_WAIT > datetime.now():
+    if rate_limit and last_call and last_call + wait > datetime.now():
         # it hasn't been long enough since the last API call
         # so wait until we're in the clear to make the request
-        wait_time = (RATE_LIMIT_LAST_CALL + RATE_LIMIT_MIN_WAIT) - datetime.now()
+        wait_time = (last_call + wait) - datetime.now()
         time.sleep(int(wait_time.total_seconds()))
 
-    if SESSION is None:
+    if WIKIPEDIA_GLOBALS['SESSION'] is None:
         reset_session()
 
-    r = SESSION.get(API_URL, params=params)
+    r = WIKIPEDIA_GLOBALS['SESSION'].get(url, params=params)
 
-    if RATE_LIMIT:
-        RATE_LIMIT_LAST_CALL = datetime.now()
+    if rate_limit:
+        WIKIPEDIA_GLOBALS['RATE_LIMIT_LAST_CALL'] = datetime.now()
 
     return r.json()

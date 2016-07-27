@@ -31,6 +31,10 @@ Functions and Classes
 
   .. autofunction:: categorytree(category, depth=5)
 
+  .. autofunction:: opensearch(query, results=10, redirect=False)
+
+  .. autofunction:: prefexsearch(query, results=10)
+
   .. autofunction:: page
 
 .. autoclass:: wikipedia.WikipediaPage
@@ -47,6 +51,12 @@ Functions and Classes
 .. autofunction:: wikipedia.donate
 
 .. autofunction:: wikipedia.clear_cache
+
+.. autofunction:: wikipedia.reset_session
+
+.. autofunction:: wikipedia.set_user_agent
+
+.. autofunction:: wikipedia.get_user_agent
 
 Exceptions
 ==========

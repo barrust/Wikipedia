@@ -86,6 +86,7 @@ full details.
 Credits
 -------
 
+-  @goldsmith for the original code
 -  `wiki-api <https://github.com/richardasaurus/wiki-api>`__ by
    @richardasaurus for inspiration
 -  @nmoroze and @themichaelyang for feedback and suggestions

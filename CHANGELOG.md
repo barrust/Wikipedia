@@ -2,16 +2,26 @@
 
 ## Current
 
+### Version 1.4.3
+
+* Reduce number of calls to API when building the category tree
+* Add tests to setup.py and import __init__ error: Fixes [#1](https://github.com/barrust/Wikipedia/issues/1)
+* Add OpenSearch functionality
+* Add prefex search functionality similar to a search box suggestion
+* Add back link property to pages
+* Add get_summary to Page object; use this for all summary pulls to reuse code
+
+
 ### Version 1.4.2
 
-* Added categorytree functionality
-* Added clear_cache function
+* Add categorytree functionality
+* Add clear_cache function
 * Reuse requests sessions: Similar to PR [#64](https://github.com/goldsmith/Wikipedia/pull/64)
 
 
 ### Version 1.4.1
 
-* Changed categories attribute to only return non-hidden categories
+* Change categories attribute to only return non-hidden categories
 * Add WikipediaPage.redirects attribute: Fixes [#90](https://github.com/goldsmith/Wikipedia/issues/90)
 * Add html.parser to BeautifulSoup call to remove warning: Fixes [#107](https://github.com/goldsmith/Wikipedia/issues/107)
 * Add additional information to DisambiguationError similar to PR [#92](https://github.com/goldsmith/Wikipedia/pull/92)

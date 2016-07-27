@@ -10,4 +10,4 @@ class TestLang(unittest.TestCase):
   def test_lang(self):
     ''' ensure the url gets updated correctly '''
     wikipedia.set_lang("fr")
-    self.assertEqual(wikipedia.API_URL, 'http://fr.wikipedia.org/w/api.php')
+    self.assertEqual(wikipedia.WIKIPEDIA_GLOBALS['API_URL'], 'http://fr.wikipedia.org/w/api.php')
