@@ -63,8 +63,7 @@ To run tests, clone the `repository on GitHub <https://github.com/barrust/Wikipe
 ::
 
   $ pip install -r requirements.txt
-  $ bash runtests  # will run tests for python and python3
-  $ python -m unittest discover tests/ '*test.py'  # manual style
+  $ python setup.py test
 
 in the root project directory.
 
