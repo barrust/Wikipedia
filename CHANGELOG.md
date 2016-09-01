@@ -7,6 +7,7 @@
 * Add set_api_url
 * Update set_lang to use updated API URL (if possible)
 * Add WikiMedia API Version and Extension requirement checks
+* Add HTTP Timeout
 
 
 ### Version 1.4.3
