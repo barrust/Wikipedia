@@ -2,6 +2,13 @@
 
 ## Current
 
+### Version 1.4.4
+
+* Add set_api_url
+* Update set_lang to use updated API URL (if possible)
+* Add WikiMedia API Version and Extension requirement checks
+
+
 ### Version 1.4.3
 
 * Reduce number of calls to API when building the category tree

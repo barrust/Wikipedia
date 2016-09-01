@@ -8,36 +8,79 @@ from decimal import Decimal
 
 from .exceptions import (
     PageError, DisambiguationError, RedirectError, HTTPTimeoutError,
-    WikipediaException, ODD_ERROR_MESSAGE)
-from .util import cache, stdout_encode, debug
+    WikipediaException, WikipediaAPIURLError, WikipediaAPILanguageError,
+    WikipediaAPIVersionError, WikipediaExtensionError, ODD_ERROR_MESSAGE)
+from .util import cache, stdout_encode, debug, _cmp_major_minor
 
 def get_version():
     ''' Return Version Number'''
-    return "1.4.3"
+    return "1.4.4"
 
 WIKIPEDIA_GLOBALS = {
     'API_URL': 'http://en.wikipedia.org/w/api.php',
+    'API_VERSION': None,
+    'API_VERSION_MAJOR_MINOR': None,
+    'INSTALLED_EXTENSIONS': None,
+    'LANGUAGE_PREFIX': 'en',
     'RATE_LIMIT': False,
     'RATE_LIMIT_MIN_WAIT': None,
     'RATE_LIMIT_LAST_CALL': None,
-    'USER_AGENT': 'python-wikipedia/{0} (https://github.com/barrust/Wikipedia/) BOT'.format(get_version()),
-    'SESSION': None
+    'USER_AGENT': 'python-mediawiki/{0} (https://github.com/barrust/Wikipedia/) BOT'.format(get_version()),
+    'SESSION': None,
+    'TIMEOUT': None
 }
 
+def set_api_url(api_url, prefix):
+    '''
+    Change the mediawiki site from which pages should be retrieved.
+    '''
+    global WIKIPEDIA_GLOBALS
+    WIKIPEDIA_GLOBALS['API_URL'] = api_url
+    WIKIPEDIA_GLOBALS['LANGUAGE_PREFIX'] = prefix
+    clear_cache()
+    try:
+        langs = languages()
+    except Exception as e:
+        raise WikipediaAPIURLError(api_url)
 
+    _get_site_info()
+
+def get_api_version():
+    '''
+    Return the API version of the Mediawiki site
+    '''
+    global WIKIPEDIA_GLOBALS
+    return WIKIPEDIA_GLOBALS['API_VERSION']
+
+def get_installed_extensions():
+    '''
+    Return the installed extensions of the Mediawiki site
+    '''
+    global WIKIPEDIA_GLOBALS
+    return WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']
 
 def set_lang(prefix):
     '''
     Change the language of the API being requested.
     Set `prefix` to one of the two letter prefixes found on the `list of all Wikipedias <http://meta.wikimedia.org/wiki/List_of_Wikipedias>`_.
-
     After setting the language, the cache for ``search``, ``suggest``, and ``summary`` will be cleared.
 
     .. note:: Make sure you search for page titles in the language that you have set.
     '''
     global WIKIPEDIA_GLOBALS
-    WIKIPEDIA_GLOBALS['API_URL'] = 'http://' + prefix.lower() + '.wikipedia.org/w/api.php'
+    old_prefix = WIKIPEDIA_GLOBALS['LANGUAGE_PREFIX']
+    tmp_url = WIKIPEDIA_GLOBALS['API_URL'].replace('/{0}.'.format(old_prefix), "/{0}.".format(prefix.lower()))
 
+    if WIKIPEDIA_GLOBALS['API_URL'] == tmp_url:
+        raise WikipediaAPILanguageError(WIKIPEDIA_GLOBALS['API_URL'], old_prefix, prefix.lower())
+
+    try:
+        langs = languages()
+    except Exception as e:
+        raise WikipediaAPIURLError(api_url)
+
+    WIKIPEDIA_GLOBALS['LANGUAGE_PREFIX'] = prefix.lower()
+    WIKIPEDIA_GLOBALS['API_URL'] = tmp_url
     clear_cache()
 
 def clear_cache():
@@ -62,6 +105,14 @@ def get_user_agent():
     ''' See User Agent string '''
     global WIKIPEDIA_GLOBALS
     return WIKIPEDIA_GLOBALS['USER_AGENT']
+
+def set_timeout(timeout):
+    '''
+        Set the HTTP timeout variable
+        .. note:: Use None for no timeout
+    '''
+    global WIKIPEDIA_GLOBALS
+    WIKIPEDIA_GLOBALS['TIMEOUT'] = timeout
 
 def reset_session():
     ''' Reset HTTP session '''
@@ -111,7 +162,15 @@ def search(query, results=10, suggestion=False):
 
     * results - the maxmimum number of results returned
     * suggestion - if True, return results and suggestion (if any) in a tuple
+
+    .. note:: MediaWiki version >= 1.16
     '''
+
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 16]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.16", 'search')
+
+
     if query is None or query.strip() == '':
         raise ValueError("Query must be specified")
     search_params = {
@@ -150,7 +209,15 @@ def categorymembers(category, results=10, subcategories=True):
 
     * results - the maxmimum number of results returned
     * subcategories - if True, return pages and sub-categories (if any) in a tuple
+
+    .. note:: MediaWiki version >= 1.17
     '''
+
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 17]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.17", 'categorymembers')
+
+
     if category is None or category.strip() == '':
         raise ValueError("Category must be specified")
 
@@ -265,7 +332,13 @@ def geosearch(latitude, longitude, title=None, results=10, radius=1000):
     * title - The title of an article to search for
     * results - the maximum number of results returned
     * radius - Search radius in meters. The value must be between 10 and 10000
+
+    .. note:: Requires GeoData extension
     '''
+    global WIKIPEDIA_GLOBALS
+    if 'GeoData' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+        raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'GeoData', 'geosearch')
+
     if latitude is None or (type(latitude) != Decimal and latitude.strip() == ''):
         raise ValueError("Latitude must be specified")
     if longitude is None or (type(longitude) != Decimal and longitude.strip() == ''):
@@ -309,7 +382,15 @@ def opensearch(query, results=10, redirect=False):
     Returns:
 
     * List of tuples: Title, Summary, and URL
+
+    .. note:: MediaWiki Version >= 1.25 OR OpenSearch extension
     '''
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 25]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.25", 'opensearch')
+    elif 'OpenSearch' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+        raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'OpenSearch', 'opensearch')
+
     if query is None or query.strip() == '':
         raise ValueError("Query must be specified")
 
@@ -341,7 +422,13 @@ def prefexsearch(query, results=10):
     Keyword arguments:
 
     * results - the maxmimum number of results returned (limited to 100 total by the API)
+
+    .. note:: MediaWiki API Version >= 1.23
     '''
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 23]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.23", 'prefixsearch')
+
     if query is None or query.strip() == '':
         raise ValueError("Query must be specified")
 
@@ -370,7 +457,14 @@ def suggest(query):
     '''
     Get a Wikipedia search suggestion for `query`.
     Returns a string or None if no suggestion was found.
+
+    .. note:: MediaWiki API Version >= 1.16
     '''
+
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 16]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.16", 'suggest')
+
     if query is None or query.strip() == '':
         raise ValueError("Query must be specified")
 
@@ -398,7 +492,13 @@ def random(pages=1):
     Keyword arguments:
 
     * pages - the number of random pages returned (max of 10)
+
+    .. note:: MediaWiki API Version >= 1.12
     '''
+    global WIKIPEDIA_GLOBALS
+    if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 12]):
+        raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.12", 'random')
+
     #http://en.wikipedia.org/w/api.php?action=query&list=random&rnlimit=5000&format=jsonfm
     if pages is None or pages < 1:
         raise ValueError('Number of pages must be greater than 0')
@@ -430,7 +530,12 @@ def summary(title, sentences=0, chars=0, auto_suggest=True, redirect=True):
     * chars - if set, return only the first `chars` characters (actual text returned may be slightly longer).
     * auto_suggest - let Wikipedia find a valid page title for the query
     * redirect - allow redirection without raising RedirectError
+
+    .. note:: Requires TextExtracts extension to be installed on MediaWiki server
     '''
+    global WIKIPEDIA_GLOBALS
+    if 'TextExtracts' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+        raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'TextExtracts', 'summary()')
 
     if title is None or title.strip() == '':
         raise ValueError('Summary title must be specified.')
@@ -454,6 +559,8 @@ def page(title=None, pageid=None, auto_suggest=True, redirect=True, preload=Fals
     * auto_suggest - let Wikipedia find a valid page title for the query
     * redirect - allow redirection without raising RedirectError
     * preload - load content, summary, images, references, and links during initialization
+
+    .. note:: Any property that the MediaWiki site does not support will be set to None if preload is used and no exception will be thrown
     '''
 
     if title is not None and title.strip() != '':
@@ -492,7 +599,12 @@ class WikipediaPage(object):
 
         if preload:
             for prop in ('content', 'summary', 'images', 'references', 'links', 'sections', 'redirects', 'coordinates', 'backlinks', 'categories'):
-                getattr(self, prop)
+                try:
+                    getattr(self, prop)
+                except WikipediaAPIVersionError:
+                    pass
+                except WikipediaExtensionError:
+                    pass
 
     def __repr__(self):
         return stdout_encode(u'<WikipediaPage \'{0}\'>'.format(self.title))
@@ -582,9 +694,10 @@ class WikipediaPage(object):
             for lis_item in filtered_lis:
                 one_disambiguation = dict()
                 item = lis_item.find_all("a")[0]
-                one_disambiguation["title"] = item["title"]
-                one_disambiguation["description"] = lis_item.text
-                disambiguation.append(one_disambiguation)
+                if item:
+                    one_disambiguation["title"] = item["title"]
+                    one_disambiguation["description"] = lis_item.text
+                    disambiguation.append(one_disambiguation)
             raise DisambiguationError(getattr(self, 'title', page['title']), may_refer_to, disambiguation)
 
         else:
@@ -636,8 +749,17 @@ class WikipediaPage(object):
         Get full page HTML.
 
         .. warning:: This can get pretty slow on long pages.
+
+        .. note:: MediaWiki version >= 1.17
         '''
+
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_html', False):
+            self._html = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 17]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.17", 'html')
+
             query_params = {
                 'prop': 'revisions',
                 'rvprop': 'content',
@@ -655,8 +777,21 @@ class WikipediaPage(object):
     def content(self):
         '''
         Plain text content of the page, excluding images, tables, and other data.
+
+        .. note:: Requires TextExtracts extension to be installed on MediaWiki server >= 1.11
         '''
+
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_content', False):
+            self._content = None
+            self._revision_id = None
+            self._parent_id = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 11]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.11", 'content')
+            if 'TextExtracts' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+                raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'TextExtracts', 'content')
+
             query_params = {
                 'prop': 'extracts|revisions',
                 'explaintext': '',
@@ -680,6 +815,8 @@ class WikipediaPage(object):
         other direct API calls. See `Help:Page history
         <http://en.wikipedia.org/wiki/Wikipedia:Revision>`_ for more
         information.
+
+        .. note:: Requires TextExtracts extension to be installed on MediaWiki server >= 1.11
         '''
         if not getattr(self, '_revid', False):
             # fetch the content (side effect is loading the revid)
@@ -692,6 +829,8 @@ class WikipediaPage(object):
         '''
         Revision ID of the parent version of the current revision of this
         page. See ``revision_id`` for more information.
+
+        .. note:: Requires TextExtracts extension to be installed on MediaWiki server >= 1.11
         '''
         if not getattr(self, '_parentid', False):
             # fetch the content (side effect is loading the parentid)
@@ -704,9 +843,12 @@ class WikipediaPage(object):
         '''
         Plain text summary of the page.
 
-        ** note: This is the same as calling page.get_summary()
+        .. note:: This is the same as calling page.get_summary()
+
+        .. note:: Requires TextExtracts extension to be installed on MediaWiki server
         '''
         if not getattr(self, '_summary', False):
+            self._summary = None # if it throws an exception that is caught, it will be set
             self._summary = self.get_summary()
 
         return self._summary
@@ -719,7 +861,13 @@ class WikipediaPage(object):
 
         * sentences - if set, return the first `sentences` sentences (can be no greater than 10).
         * chars - if set, return only the first `chars` characters (actual text returned may be slightly longer).
+
+        .. note:: Requires TextExtracts extension to be installed on MediaWiki server
         '''
+        global WIKIPEDIA_GLOBALS
+        if 'TextExtracts' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+            raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'TextExtracts', 'get_summary()')
+
         query_params = {
             'prop': 'extracts',
             'explaintext': '',
@@ -754,15 +902,23 @@ class WikipediaPage(object):
     def coordinates(self):
         '''
         Tuple of Decimals in the form of (lat, lon) or None
+
+        .. note:: Requires GeoData extension
         '''
+        global WIKIPEDIA_GLOBALS
+
         if not getattr(self, '_coordinates', False):
+            self._coordinates = None
+
+            if 'GeoData' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
+                raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'GeoData', 'coordinates')
+
+            # add geodata check here
             request = _wiki_request({'prop': 'coordinates', 'colimit': 'max', 'titles': self.title})
 
             if 'query' in request and 'coordinates' in request['query']['pages'][self.pageid]:
                 coordinates = request['query']['pages'][self.pageid]['coordinates']
                 self._coordinates = (Decimal(coordinates[0]['lat']), Decimal(coordinates[0]['lon']))
-            else:
-                self._coordinates = None
 
         return self._coordinates
 
@@ -771,8 +927,17 @@ class WikipediaPage(object):
         '''
         List of URLs of external links on a page.
         May include external links within page that aren't technically cited anywhere.
+
+        .. note:: MediaWiki version >= 1.13
         '''
+
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_references', False):
+            self._references = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 13]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.13", 'references')
+
             self._references = list()
             for link in self.__continued_query({'prop': 'extlinks', 'ellimit': 'max'}):
                 url = link['*'] if link['*'].startswith('http') else 'http:' + link['*']
@@ -786,8 +951,16 @@ class WikipediaPage(object):
         List of titles of Wikipedia page links on a page.
 
         .. note:: Only includes articles from namespace 0, meaning no Category, User talk, or other meta-Wikipedia pages.
+
+        .. note:: MediaWiki version >= 1.13
         '''
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_links', False):
+            self._links = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 13]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.13", 'links')
+
             self._links = list()
             for link in self.__continued_query({'prop': 'links', 'plnamespace': 0, 'pllimit': 'max'}):
                 self._links.append(link['title'])
@@ -798,8 +971,16 @@ class WikipediaPage(object):
     def categories(self):
         '''
         List of non-hidden categories of a page.
+
+        .. note:: MediaWiki version >= 1.14
         '''
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_categories', False):
+            self._categories = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 14]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.14", 'categories')
+
             self._categories = list()
             for link in self.__continued_query({'prop': 'categories', 'cllimit': 'max', 'clshow': '!hidden'}):
                 if link['title'].startswith('Category:'):
@@ -813,8 +994,16 @@ class WikipediaPage(object):
     def redirects(self):
         '''
         List of all redirects to the page.
+
+        .. note:: MediaWiki version >= 1.24
         '''
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_redirects', False):
+            self._redirects = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 24]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.24", 'redirects')
+
             self._redirects = list()
             for link in self.__continued_query({'prop': 'redirects','rdprop': 'title','rdlimit': '100'}):
                 self._redirects.append(link['title'])
@@ -827,8 +1016,16 @@ class WikipediaPage(object):
         List all pages that link to this page
 
         .. note:: Only includes articles from namespace 0, meaning no Category, User talk, or other meta-Wikipedia pages.
+
+        .. note:: MediaWiki version >= 1.9
         '''
+        global WIKIPEDIA_GLOBALS
         if not getattr(self, '_backlinks', False):
+            self._backlinks = None
+
+            if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 9]):
+                raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.9", 'backlinks')
+
             query_params = {
                 'action': 'query',
                 'list': 'backlinks',
@@ -894,6 +1091,23 @@ class WikipediaPage(object):
 
         return self.content[index:next_index].lstrip("=").strip()
 
+def _get_site_info():
+    '''
+    Parse out the Wikimedia site information including API Version and Extensions
+    '''
+    global WIKIPEDIA_GLOBALS
+    response = _wiki_request({
+        'meta': 'siteinfo',
+        'siprop': 'extensions|general'
+    })
+    WIKIPEDIA_GLOBALS['API_VERSION'] = response['query']['general']['generator'].split(" ")[1].split("-")[0]
+    major_minor = WIKIPEDIA_GLOBALS['API_VERSION'].split('.')
+    for i, item in enumerate(major_minor):
+        major_minor[i] = int(item)
+    WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] = major_minor
+    WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS'] = set()
+    for ext in response['query']['extensions']:
+        WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS'].add(ext['name'])
 
 @cache
 def languages():
@@ -949,13 +1163,25 @@ def _wiki_request(params):
         # so wait until we're in the clear to make the request
         wait_time = (last_call + wait) - datetime.now()
         time.sleep(int(wait_time.total_seconds()))
-
+        disambiguation = list()
+        for lis_item in filtered_lis:
+            one_disambiguation = dict()
+            item = lis_item.find_all("a")[0]
+            if item:
+                one_disambiguation["title"] = item["title"]
+                one_disambiguation["description"] = lis_item.text
+                disambiguation.append(one_disambiguation)
     if WIKIPEDIA_GLOBALS['SESSION'] is None:
         reset_session()
 
-    r = WIKIPEDIA_GLOBALS['SESSION'].get(url, params=params)
+    r = WIKIPEDIA_GLOBALS['SESSION'].get(url, params=params, timeout=WIKIPEDIA_GLOBALS['TIMEOUT'])
 
     if rate_limit:
         WIKIPEDIA_GLOBALS['RATE_LIMIT_LAST_CALL'] = datetime.now()
 
     return r.json()
+
+
+
+# RUN THIS TO SET THE API VERSION
+_get_site_info()

@@ -45,3 +45,10 @@ def stdout_encode(u, default='UTF8'):
   if sys.version_info > (3, 0):
     return u.encode(encoding).decode(encoding)
   return u.encode(encoding)
+
+def _cmp_major_minor(funct, api):
+    ''' Return False if MediaWiki site is less than the functions requirement. '''
+    for i in range(len(api)):
+        if api[i] > funct[i]:
+            return True
+    return False

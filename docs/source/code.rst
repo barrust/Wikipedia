@@ -40,11 +40,21 @@ Functions and Classes
 .. autoclass:: wikipedia.WikipediaPage
   :members:
 
+.. autofunction:: wikipedia.set_api_url
+
+.. autofunction:: wikipedia.get_api_version
+
+.. autofunction:: wikipedia.get_installed_extensions
+
+.. autofunction:: wikipedia.get_user_agent
+
 .. autofunction:: wikipedia.languages
 
 .. autofunction:: wikipedia.set_lang
 
 .. autofunction:: wikipedia.set_rate_limiting
+
+.. autofunction:: wikipedia.set_timeout
 
 .. autofunction:: wikipedia.random
 
