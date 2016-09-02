@@ -18,6 +18,8 @@ class _wiki_request(object):
     return mock_data["_wiki_request calls"][tuple(sorted(params.items()))]
 
 wikipedia._wiki_request = _wiki_request()
+wikipedia.WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] = (1,28,)
+wikipedia.WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS'] = ['TextExtracts', 'GeoData']
 
 
 class TestSearch(unittest.TestCase):

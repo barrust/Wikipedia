@@ -77,7 +77,7 @@ def set_lang(prefix):
     try:
         langs = languages()
     except Exception as e:
-        raise WikipediaAPIURLError(api_url)
+        raise WikipediaAPIURLError(tmp_url)
 
     WIKIPEDIA_GLOBALS['LANGUAGE_PREFIX'] = prefix.lower()
     WIKIPEDIA_GLOBALS['API_URL'] = tmp_url
@@ -167,6 +167,9 @@ def search(query, results=10, suggestion=False):
     '''
 
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 16]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.16", 'search')
 
@@ -214,6 +217,9 @@ def categorymembers(category, results=10, subcategories=True):
     '''
 
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 17]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.17", 'categorymembers')
 
@@ -336,6 +342,9 @@ def geosearch(latitude, longitude, title=None, results=10, radius=1000):
     .. note:: Requires GeoData extension
     '''
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if 'GeoData' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
         raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'GeoData', 'geosearch')
 
@@ -386,6 +395,9 @@ def opensearch(query, results=10, redirect=False):
     .. note:: MediaWiki Version >= 1.25 OR OpenSearch extension
     '''
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 25]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.25", 'opensearch')
     elif 'OpenSearch' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
@@ -426,6 +438,9 @@ def prefexsearch(query, results=10):
     .. note:: MediaWiki API Version >= 1.23
     '''
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 23]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.23", 'prefixsearch')
 
@@ -462,6 +477,9 @@ def suggest(query):
     '''
 
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 16]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.16", 'suggest')
 
@@ -496,6 +514,9 @@ def random(pages=1):
     .. note:: MediaWiki API Version >= 1.12
     '''
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if _cmp_major_minor(WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'], [1, 12]):
         raise WikipediaAPIVersionError(WIKIPEDIA_GLOBALS['API_URL'], WIKIPEDIA_GLOBALS['API_VERSION'], "1.12", 'random')
 
@@ -534,6 +555,9 @@ def summary(title, sentences=0, chars=0, auto_suggest=True, redirect=True):
     .. note:: Requires TextExtracts extension to be installed on MediaWiki server
     '''
     global WIKIPEDIA_GLOBALS
+    if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+        _get_site_info()
+
     if 'TextExtracts' not in WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS']:
         raise WikipediaExtensionError(WIKIPEDIA_GLOBALS['API_URL'], 'TextExtracts', 'summary()')
 
@@ -587,6 +611,10 @@ class WikipediaPage(object):
     '''
 
     def __init__(self, title=None, pageid=None, redirect=True, preload=False, original_title=''):
+        global WIKIPEDIA_GLOBALS
+        if WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] is None:
+            _get_site_info()
+
         if title is not None:
             self.title = title
             self.original_title = original_title or title
@@ -1180,8 +1208,3 @@ def _wiki_request(params):
         WIKIPEDIA_GLOBALS['RATE_LIMIT_LAST_CALL'] = datetime.now()
 
     return r.json()
-
-
-
-# RUN THIS TO SET THE API VERSION
-_get_site_info()

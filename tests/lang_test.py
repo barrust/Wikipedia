@@ -1,7 +1,21 @@
 # -*- coding: utf-8 -*-
 import unittest
+from collections import defaultdict
 
 from wikipedia import wikipedia
+class language(object):
+  ''' _wiki_request override '''
+  calls = defaultdict(int)
+
+  @classmethod
+  def __call__(cls, params):
+    cls.calls[params.__str__()] += 1
+    return True
+
+wikipedia.language = language
+wikipedia.WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] = (1,28,)
+wikipedia.WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS'] = ['TextExtracts', 'GeoData']
+
 
 
 class TestLang(unittest.TestCase):

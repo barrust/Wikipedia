@@ -11,7 +11,8 @@ def _wiki_request(params):
   ''' _wiki_request override '''
   return mock_data["_wiki_request calls"][tuple(sorted(params.items()))]
 wikipedia._wiki_request = _wiki_request
-
+wikipedia.WIKIPEDIA_GLOBALS['API_VERSION_MAJOR_MINOR'] = (1,28,)
+wikipedia.WIKIPEDIA_GLOBALS['INSTALLED_EXTENSIONS'] = ['TextExtracts', 'GeoData']
 
 class TestPageSetUp(unittest.TestCase):
   """Test the functionality of wikipedia.page's __init__ and load functions."""
