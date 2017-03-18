@@ -1,7 +1,14 @@
 # Changelog
 
-## Current
+# Final Version
 
+* Deprecated due to issues with supporting multiple mediawiki sites;
+For future updates and supported code, please see
+[pymediawiki](https://github.com/barrust/mediawiki)
+
+
+
+### Last Stable
 ### Version 1.4.4
 
 * Add set_api_url

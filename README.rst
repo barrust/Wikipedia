@@ -11,6 +11,18 @@ Wikipedia
     :target: https://pypi.python.org/pypi/wikipedia/
     :alt: License
 
+NOTICE
+======
+
+Due to issues supporting multiple MediaWiki sites simultaneously, I decided to
+deprecate this project in favor of a site designed from the ground up to
+fully support as many MediaWiki sites as possible. For future updates and
+support, please see the `pymediawiki <https://github.com/barrust/mediawiki>`__
+package.
+
++++++++++++++
+
+
 **Wikipedia** is a Python library that makes it easy to access and parse
 data from Wikipedia.
 
